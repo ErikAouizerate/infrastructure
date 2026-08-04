@@ -1,0 +1,15 @@
+---
+# SSH port sshd will listen on after provisioning (matches the firewall rule).
+ssh_port: 3254
+
+# Dedicated sudo user created by the playbook.
+admin_user: admin
+
+# Public key copied into admin's authorized_keys (read on the control node).
+admin_ssh_public_key: "{{ lookup('file', lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub') }}"
+
+# Tailscale auth key, read from the local environment at runtime.
+tailscale_authkey: "{{ lookup('env', 'TS_AUTHKEY') }}"
+
+# Swapfile size in MiB.
+swap_size_mb: 2048
