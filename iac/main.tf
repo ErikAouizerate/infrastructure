@@ -13,18 +13,29 @@ resource "hcloud_server" "app" {
   ssh_keys     = [data.hcloud_ssh_key.default.id]
   firewall_ids = [hcloud_firewall.app.id]
 
-  # Cloud-init runs on first boot. It moves sshd to the non-standard port
-  # BEFORE anything else, so the managed firewall's 3254 rule is usable
-  # immediately and port 22 never has to be opened (destroy/reapply-safe).
+  # Cloud-init runs on first boot. It creates the sudo user "admin" and moves
+  # sshd to the non-standard port (and disables root/password login) BEFORE
+  # anything else, so the managed firewall's 3254 rule is usable immediately
+  # and neither port 22 nor a root bootstrap is ever needed.
   # NOTE: user_data is ForceNew - changing it recreates the server.
-  # The drop-in only sets "Port" (NOT root/password): Ansible takes over the
-  # rest of the sshd config and removes this drop-in afterwards.
+  # The drop-in holds the whole sshd bootstrap; Ansible removes it once it
+  # manages sshd itself via the main config.
   user_data = <<-EOT
     #cloud-config
+    users:
+      - default
+      - name: ${var.admin_user}
+        groups: [sudo]
+        sudo: "ALL=(ALL) NOPASSWD:ALL"
+        shell: /bin/bash
+        ssh_authorized_keys:
+          - ${trimspace(var.admin_ssh_public_key)}
     write_files:
       - path: /etc/ssh/sshd_config.d/99-bootstrap.conf
         content: |
           Port ${var.ssh_port}
+          PermitRootLogin no
+          PasswordAuthentication no
         permissions: "0644"
     runcmd:
       - [systemctl, disable, --now, ssh.socket]

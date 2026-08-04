@@ -9,19 +9,22 @@
 > **Note (updated after execution):** the original Task 0 of this plan opened a
 > temporary firewall rule for port 22 to bootstrap. That approach was replaced
 > by a cloud-init `user_data` bootstrap (`iac/main.tf`): the drop-in sets
-> `Port 3254` and disables `ssh.socket`, so a fresh server is reachable on 3254
-> immediately. The playbook then removes that drop-in once it manages sshd.
-> This was validated by re-creating the server.
+> `Port 3254` and disables `ssh.socket`, and cloud-init creates the sudo user
+> `admin` (with `admin_ssh_public_key`), so a fresh server is reachable as
+> `admin` on 3254 immediately. The playbook then removes that drop-in once it
+> manages sshd. This was validated by re-creating the server.
 
-**Tech Stack:** Ansible (installed via `uv`), Ubuntu 24.04 target, `ansible.posix` for `authorized_key`, Tailscale install script.
+**Tech Stack:** Ansible (installed via `uv`), Ubuntu 24.04 target, Tailscale install script.
 
 ## Global Constraints
 
 - Server `app`: `2.28.26.25` (IPv4), IPv6 `2a01:4f8:c014:625a::1`.
-- Admin user: `admin`, sudo NOPASSWD, key = control node `~/.ssh/id_rsa.pub`.
-- sshd final state: `Port 3254`, `PermitRootLogin no`, `PasswordAuthentication no`.
-- No firewall rule for port `22` at all — bootstrap runs as `root` on `3254`
-  (cloud-init moves sshd there at first boot).
+- Admin user: `admin`, sudo NOPASSWD, created by cloud-init (`user_data`) with
+  the key from `TF_VAR_admin_ssh_public_key` (`.env`).
+- sshd final state: `Port 3254`, `PermitRootLogin no`, `PasswordAuthentication no`
+  (already set by cloud-init at boot; Ansible keeps them in the main config).
+- No firewall rule for port `22` at all, and **no root bootstrap** — the
+  playbook runs directly as `admin` on `3254`.
 - Secrets only in `.env`: `TS_AUTHKEY` is consumed at runtime (never committed).
 - Comments in English; user follows at intermediate level.
 
@@ -123,9 +126,9 @@ all:
   hosts:
     app:
       ansible_host: 2.28.26.25
-      # Bootstrap phase: root on port 3254 (cloud-init moved sshd there).
-      # After the playbook: switch to admin on port 3254 (cleanup task).
-      ansible_user: root
+      # The "admin" user is created by cloud-init (user_data in iac/main.tf),
+      # so the playbook always runs as admin on port 3254 - no root phase.
+      ansible_user: admin
       ansible_port: 3254
 ```
 
@@ -136,12 +139,6 @@ all:
 # SSH port sshd will listen on after provisioning (matches the firewall rule).
 ssh_port: 3254
 
-# Dedicated sudo user created by the playbook.
-admin_user: admin
-
-# Public key copied into admin's authorized_keys (read on the control node).
-admin_ssh_public_key: "{{ lookup('file', lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub') }}"
-
 # Tailscale auth key, read from the local environment at runtime.
 tailscale_authkey: "{{ lookup('env', 'TS_AUTHKEY') }}"
 
@@ -149,13 +146,13 @@ tailscale_authkey: "{{ lookup('env', 'TS_AUTHKEY') }}"
 swap_size_mb: 2048
 ```
 
-- [ ] **Step 4: Sanity-check the key file exists**
+- [ ] **Step 4: Sanity-check the admin key is set in `.env`**
 
 Run:
 ```bash
-ls -la ~/.ssh/id_rsa.pub
+grep TF_VAR_admin_ssh_public_key ../.env
 ```
-Expected: file present.
+Expected: a line with the `ssh-rsa` key (used by cloud-init to create `admin`).
 
 - [ ] **Step 5: Commit**
 
@@ -208,31 +205,9 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
         group: root
         mode: "0644"
 
-    # --- 3. Dedicated sudo user ----------------------------------------------
-    - name: Create admin user
-      ansible.builtin.user:
-        name: "{{ admin_user }}"
-        groups: sudo
-        append: true
-        shell: /bin/bash
-        create_home: true
-
-    - name: Grant passwordless sudo to admin
-      ansible.builtin.copy:
-        content: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
-        dest: "/etc/sudoers.d/{{ admin_user }}"
-        owner: root
-        group: root
-        mode: "0440"
-        validate: "visudo -cf %s"
-
-    - name: Install admin SSH public key
-      ansible.posix.authorized_key:
-        user: "{{ admin_user }}"
-        key: "{{ admin_ssh_public_key }}"
-        state: present
-
-    # --- 4. Harden sshd (new SSH port, key-only) ----------------------------
+    # --- 3. Harden sshd (new SSH port, key-only) ----------------------------
+    # Note: the sudo user "admin" was already created by cloud-init (server
+    # user_data in iac/main.tf) - this playbook runs as "admin".
     - name: Set sshd port
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
@@ -264,7 +239,16 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
         enabled: false
       notify: Restart sshd
 
-    # --- 5. Tailscale --------------------------------------------------------
+    # The cloud-init bootstrap drop-in (set at server creation) only set the
+    # port. Once this playbook manages sshd via the main config, remove it so
+    # there is a single source of truth.
+    - name: Remove cloud-init bootstrap sshd drop-in
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d/99-bootstrap.conf
+        state: absent
+      notify: Restart sshd
+
+    # --- 4. Tailscale --------------------------------------------------------
     - name: Download Tailscale installer
       ansible.builtin.get_url:
         url: https://tailscale.com/install.sh
@@ -289,7 +273,7 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
       when: ts_status.rc != 0 or '"Running"' not in ts_status.stdout
       no_log: true
 
-    # --- 6. Swap + base packages --------------------------------------------
+    # --- 5. Swap + base packages --------------------------------------------
     - name: Create swapfile
       ansible.builtin.command: "fallocate -l {{ swap_size_mb }}M /swapfile"
       args:
@@ -329,7 +313,7 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
           - ca-certificates
         state: present
 
-    # --- 7. Hostname ---------------------------------------------------------
+    # --- 6. Hostname ---------------------------------------------------------
     - name: Set hostname
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
@@ -365,7 +349,7 @@ git commit -m "provisioning: add admin hardening playbook"
 
 ### Task 3: Run the playbook and verify
 
-- [ ] **Step 1: Run the playbook (bootstrap as root on port 22)**
+- [ ] **Step 1: Run the playbook (as admin, created by cloud-init)**
 
 Run:
 ```bash
@@ -373,7 +357,7 @@ set -a && source ../.env && set +a   # exports TS_AUTHKEY for the playbook
 cd provisioning
 ansible-playbook playbooks/admin.yml
 ```
-Expected: all tasks OK (a few `changed`). The `upgrade: dist` step can take several minutes. `no_log` hides the auth key.
+Expected: all tasks OK (a few `changed`). The `upgrade: dist` step can take several minutes. `no_log` hides the auth key. The playbook connects as `admin` on 3254 — cloud-init already did the user + sshd bootstrap.
 
 - [ ] **Step 2: Verify sshd listens on 3254**
 

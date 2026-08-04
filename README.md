@@ -24,9 +24,11 @@ set -a && source .env && set +a
 
 ## Deploy / re-deploy from scratch
 
-The server is created with a cloud-init `user_data` that moves sshd to port
-`3254` at first boot (and disables Ubuntu's socket activation). This makes the
-destroy -> apply -> provision loop lockout-safe: **port 22 is never needed**.
+The server is created with a cloud-init `user_data` that, at first boot, creates
+the sudo user `admin` (with your SSH key) and moves sshd to port `3254`
+(disabling Ubuntu's socket activation, root and password login). This makes the
+destroy -> apply -> provision loop lockout-safe: **port 22 is never opened and
+there is no root bootstrap**.
 
 ```bash
 # 1. Create the infrastructure (server + managed firewall)
@@ -38,15 +40,10 @@ terraform apply
 # 2. Get the new public IP and put it in the inventory
 terraform output -raw server_ipv4   # -> update provisioning/inventory/hosts.yml (ansible_host)
 
-# 3. Provision the server (bootstrap phase: root on port 3254)
-#    Edit provisioning/inventory/hosts.yml -> ansible_user: root
+# 3. Provision the server (as admin, created by cloud-init)
 cd ../provisioning
 set -a && source ../.env && set +a
-ansible-playbook playbooks/admin.yml
-
-# 4. Switch the inventory back to the admin user, then optionally re-run
-#    provisioning/inventory/hosts.yml -> ansible_user: admin
-ansible-playbook playbooks/admin.yml   # idempotent
+ansible-playbook playbooks/admin.yml   # idempotent, can be re-run
 ```
 
 Access:

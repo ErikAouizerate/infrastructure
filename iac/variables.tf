@@ -31,3 +31,18 @@ variable "ssh_port" {
   type        = number
   default     = 3254
 }
+
+# Sudo user created by cloud-init at first boot (Ansible connects as this user).
+variable "admin_user" {
+  description = "Sudo user created by cloud-init (Ansible connects as this user)"
+  type        = string
+  default     = "admin"
+}
+
+# Public SSH key for the admin user, injected by cloud-init at first boot.
+# Set via TF_VAR_admin_ssh_public_key in .env, e.g.:
+# TF_VAR_admin_ssh_public_key="$(cat ~/.ssh/id_rsa.pub)"
+variable "admin_ssh_public_key" {
+  description = "Public SSH key for the admin user (cloud-init user_data)"
+  type        = string
+}

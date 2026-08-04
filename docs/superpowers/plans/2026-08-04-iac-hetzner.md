@@ -30,7 +30,7 @@
 - Create: `iac/variables.tf`
 
 **Interfaces:**
-- Produces: variables `ssh_key_name` (string), `ssh_allowed_ips` (list of string), `server_type` (string, default `cpx32`), `location` (string, default `fsn1`), `ssh_port` (number, default `3254`). Task 2 consumes these exact names.
+- Produces: variables `ssh_key_name` (string), `ssh_allowed_ips` (list of string), `server_type` (string, default `cpx32`), `location` (string, default `fsn1`), `ssh_port` (number, default `3254`), `admin_user` (string, default `admin`), `admin_ssh_public_key` (string, from `TF_VAR_admin_ssh_public_key`). Task 2 consumes these exact names.
 
 - [ ] **Step 1: Create `iac/providers.tf`**
 
@@ -85,6 +85,19 @@ variable "ssh_port" {
   description = "SSH port allowed through the firewall"
   type        = number
   default     = 3254
+}
+
+# Sudo user created by cloud-init at first boot (Ansible connects as this user).
+variable "admin_user" {
+  description = "Sudo user created by cloud-init (Ansible connects as this user)"
+  type        = string
+  default     = "admin"
+}
+
+# Public SSH key for the admin user, injected by cloud-init at first boot.
+variable "admin_ssh_public_key" {
+  description = "Public SSH key for the admin user (cloud-init user_data)"
+  type        = string
 }
 ```
 
@@ -142,6 +155,33 @@ resource "hcloud_server" "app" {
   location    = var.location
   ssh_keys    = [data.hcloud_ssh_key.default.id]
   firewall_ids = [hcloud_firewall.app.id]
+
+  # Cloud-init runs on first boot. It creates the sudo user "admin" and moves
+  # sshd to the non-standard port (and disables root/password login) BEFORE
+  # anything else, so the managed firewall's 3254 rule is usable immediately
+  # and neither port 22 nor a root bootstrap is ever needed.
+  # NOTE: user_data is ForceNew - changing it recreates the server.
+  user_data = <<-EOT
+    #cloud-config
+    users:
+      - default
+      - name: ${var.admin_user}
+        groups: [sudo]
+        sudo: "ALL=(ALL) NOPASSWD:ALL"
+        shell: /bin/bash
+        ssh_authorized_keys:
+          - ${trimspace(var.admin_ssh_public_key)}
+    write_files:
+      - path: /etc/ssh/sshd_config.d/99-bootstrap.conf
+        content: |
+          Port ${var.ssh_port}
+          PermitRootLogin no
+          PasswordAuthentication no
+        permissions: "0644"
+    runcmd:
+      - [systemctl, disable, --now, ssh.socket]
+      - [systemctl, restart, ssh]
+  EOT
 
   public_net {
     ipv4_enabled = true

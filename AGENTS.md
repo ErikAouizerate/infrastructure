@@ -49,12 +49,13 @@ rule allows them.
 
 ### Bootstrap (destroy -> apply -> provision) is lockout-safe
 
-The server's `user_data` (cloud-init) moves sshd to port `3254` and disables
-Ubuntu's `ssh.socket` at first boot. So after a fresh `terraform apply`, SSH is
-already reachable on 3254 and **port 22 is never opened**. Bootstrap the Ansible
-inventory as `root` on port `3254`, then switch to `admin` (see README). Note:
-`user_data` is `ForceNew` — changing it recreates the server. The playbook
-removes the cloud-init sshd drop-in once it manages sshd itself.
+The server's `user_data` (cloud-init) creates the sudo user `admin` (key-only)
+and moves sshd to port `3254` at first boot, disabling Ubuntu's `ssh.socket`
+and root/password login. So after a fresh `terraform apply`, SSH is already
+reachable as `admin` on 3254 — **port 22 is never opened and there is no root
+bootstrap**. Ansible runs directly as `admin`. Note: `user_data` is `ForceNew`
+— changing it recreates the server. The playbook removes the cloud-init sshd
+drop-in once it manages sshd itself.
 
 ## Environment variables (root `.env`)
 
@@ -64,6 +65,9 @@ removes the cloud-init sshd drop-in once it manages sshd itself.
 - `TF_VAR_ssh_allowed_ips` — JSON list of admin CIDRs allowed to SSH to the
   firewall, e.g. `TF_VAR_ssh_allowed_ips='["1.2.3.4/32"]'` (single-quote so the
   shell keeps the quotes).
+- `TF_VAR_admin_ssh_public_key` — public key of the `admin` user, injected by
+  cloud-init. Set with `TF_VAR_admin_ssh_public_key="$(cat ~/.ssh/id_rsa.pub)"`
+  (must be quoted: the key contains spaces).
 - `TS_AUTHKEY` — Tailscale auth key used by the server.
 
 `.env` is loaded with `set -a && source .env && set +a` before running
@@ -77,8 +81,9 @@ removes the cloud-init sshd drop-in once it manages sshd itself.
   private network.
 - `provisioning/` — Ansible. Inventory `inventory/hosts.yml`, group vars in
   `inventory/group_vars/` (must sit next to the inventory), playbooks in
-  `playbooks/`. Admin playbook: apt, unattended-upgrades, sudo user `admin`,
-  sshd on 3254, Tailscale, swap, hostname.
+  `playbooks/`. Admin playbook: apt, unattended-upgrades, sshd on 3254,
+  Tailscale, swap, hostname. The `admin` user is created by cloud-init (not by
+  Ansible).
 - `specs/` and `docs/superpowers/` — feature specs and plans.
 
 ## Terraform commands

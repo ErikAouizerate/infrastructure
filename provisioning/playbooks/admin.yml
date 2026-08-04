@@ -31,31 +31,9 @@
         group: root
         mode: "0644"
 
-    # --- 3. Dedicated sudo user ----------------------------------------------
-    - name: Create admin user
-      ansible.builtin.user:
-        name: "{{ admin_user }}"
-        groups: sudo
-        append: true
-        shell: /bin/bash
-        create_home: true
-
-    - name: Grant passwordless sudo to admin
-      ansible.builtin.copy:
-        content: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
-        dest: "/etc/sudoers.d/{{ admin_user }}"
-        owner: root
-        group: root
-        mode: "0440"
-        validate: "visudo -cf %s"
-
-    - name: Install admin SSH public key
-      ansible.posix.authorized_key:
-        user: "{{ admin_user }}"
-        key: "{{ admin_ssh_public_key }}"
-        state: present
-
-    # --- 4. Harden sshd (new SSH port, key-only) ----------------------------
+    # --- 3. Harden sshd (new SSH port, key-only) ----------------------------
+    # Note: the sudo user "admin" was already created by cloud-init (server
+    # user_data in iac/main.tf) - this playbook runs as "admin".
     - name: Set sshd port
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config

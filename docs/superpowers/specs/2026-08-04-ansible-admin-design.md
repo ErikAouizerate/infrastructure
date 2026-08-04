@@ -8,11 +8,12 @@ Roadmap step: provisioning, part 1 of 2 (administration only; Docker/Dockploy la
 
 The single Hetzner server (CPX32, Ubuntu 24.04) is deployed via Terraform
 (`iac/`). To keep the destroy -> apply -> provision loop lockout-safe, the
-server is created with a cloud-init `user_data` that moves sshd to port `3254`
-and disables Ubuntu's `ssh.socket` at first boot. The managed firewall only
-opens port `3254`, so after apply the server is already reachable on `3254` as
-`root` (key-only); port `22` is never opened. The browser console cannot log in
-because the cloud image has no root password (key-only).
+server is created with a cloud-init `user_data` that at first boot creates the
+sudo user `admin` (key-only), moves sshd to port `3254`, disables Ubuntu's
+`ssh.socket` and root/password login. The managed firewall only opens port
+`3254`, so after apply the server is already reachable as `admin` on `3254`;
+**port 22 is never opened and there is no root bootstrap**. The browser console
+cannot log in because the cloud image has no root password (key-only).
 
 This plan hardens the server for administration. It explicitly excludes Docker,
 Dockploy and Cloudflare (later steps).
@@ -21,11 +22,11 @@ Dockploy and Cloudflare (later steps).
 
 | Topic | Decision | Rationale |
 |---|---|---|
-| Admin account | dedicated sudo user `admin` (passwordless sudo), root login disabled at the end | Production practice; still a single-server learning setup |
-| Admin SSH key | the user's `~/.ssh/id_rsa.pub` (per user) | The key registered in Hetzner (`erik123.contact@protonmail.com`) is used for the root bootstrap |
-| SSH port | sshd on `3254`; `PermitRootLogin no`, `PasswordAuthentication no` | Non-standard port; key-only; matches the firewall rule |
+| Admin account | sudo user `admin` (passwordless sudo) created by **cloud-init** at first boot; root login disabled from boot | No root bootstrap stage at all; single source for user creation |
+| Admin SSH key | `TF_VAR_admin_ssh_public_key` in `.env`, injected by cloud-init | Key set at creation time (user_data), no playbook step needed |
+| SSH port | sshd on `3254`; `PermitRootLogin no`, `PasswordAuthentication no` set by cloud-init at boot, kept in sync by Ansible | Non-standard port; key-only; matches the firewall rule |
 | Admin access | public SSH `3254` (firewall, admin IPs) **and** Tailscale | Redundancy: SSH public as fallback, Tailscale as secondary path |
-| Bootstrap path | cloud-init `user_data` sets `Port 3254` (drop-in) + disables `ssh.socket` at first boot; Ansible bootstraps as `root` on `3254` | No firewall change needed; port 22 stays closed forever; validated by re-creating the server |
+| Bootstrap path | cloud-init `user_data` creates `admin` + sets sshd drop-in (`Port 3254`, `PermitRootLogin no`, `PasswordAuthentication no`) + disables `ssh.socket` | Ansible connects directly as `admin` on 3254; validated by re-creating the server |
 | Ansible install | `uv tool install ansible` (uv already present) | Clean, isolated install |
 | Swap | 2 GB swapfile | 8 GB RAM will be tight later (Docker apps + DBs) |
 | Security extras | `unattended-upgrades` enabled | Automatic security patches |
@@ -36,17 +37,17 @@ Dockploy and Cloudflare (later steps).
 
 1. apt update + upgrade (tag `upgrade`)
 2. enable `unattended-upgrades`
-3. create `admin` (sudo NOPASSWD) + copy `id_rsa.pub` to its `authorized_keys`
-4. sshd: port `3254`, `PermitRootLogin no`, `PasswordAuthentication no`
+3. sshd: port `3254`, `PermitRootLogin no`, `PasswordAuthentication no`
    (restart via handler; established session survives the listener restart)
-5. remove the cloud-init bootstrap drop-in (`/etc/ssh/sshd_config.d/99-bootstrap.conf`)
+4. remove the cloud-init bootstrap drop-in (`/etc/ssh/sshd_config.d/99-bootstrap.conf`)
    once Ansible manages sshd via the main config
-6. Tailscale install + join (`TS_AUTHKEY`)
-7. swapfile 2 GB + base packages (`curl`, `git`, `htop`, `jq`, `ca-certificates`)
-8. hostname `app`
+5. Tailscale install + join (`TS_AUTHKEY`)
+6. swapfile 2 GB + base packages (`curl`, `git`, `htop`, `jq`, `ca-certificates`)
+7. hostname `app`
 
-Safety nets if locked out: the running SSH session (keep it open during the
-run), and the Hetzner Console rescue system.
+The playbook runs as `admin` (created by cloud-init). Safety nets if locked
+out: the running SSH session (keep it open during the run), and the Hetzner
+Console rescue system.
 
 ## Out of scope
 
