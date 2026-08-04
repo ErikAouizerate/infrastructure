@@ -23,6 +23,7 @@ firewall.
 | L4 firewall | Hetzner managed firewall (`hcloud_firewall`) | Free, stateful, implicit deny inbound, enforced before packets reach the OS |
 | SSH | port `3254`, allowed only from `var.ssh_allowed_ips` | Non-standard port; strict source allowlist |
 | HTTP | ports `80`/`443` open to the world for now | Needed once Dockploy serves test apps; restricted to Cloudflare IPs at the last step |
+| ICMP | allowed inbound | Ping, and IPv6 neighbor discovery (blocking ICMPv6 breaks IPv6) |
 | Private network | none | Single server; nothing to isolate |
 | NAT / nftables | none | Handled by the managed firewall |
 | Terraform state | local (`.terraform/`) | Fine for learning; remote backend (Hetzner Object Storage, S3-compatible) noted as a future improvement |
@@ -38,6 +39,7 @@ Internet ──> Cloudflare (L7, last step) ──> [80/443] ─┐
                               ├─ hcloud_firewall (managed L4)
                               │    ├─ allow TCP 3254 from ssh_allowed_ips
                               │    ├─ allow TCP 80,443 from anywhere (tighten to Cloudflare later)
+                              │    ├─ allow ICMP (ping + IPv6 neighbor discovery, required for IPv6)
                               │    └─ deny everything else inbound / allow all outbound
                               ├─ (Ansible, next step) sshd on 3254, Tailscale, Docker, Dockploy
                               └─ apps: Docker Compose stacks managed by Dockploy
