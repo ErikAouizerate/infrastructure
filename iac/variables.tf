@@ -11,11 +11,11 @@ variable "ssh_allowed_ips" {
   type        = list(string)
 }
 
-# Hetzner server type. Default is cpx31 (4 vCPU / 8 GB / 160 GB).
+# Hetzner server type. Default is cpx32 (4 vCPU / 8 GB / 160 GB).
 variable "server_type" {
   description = "Hetzner Cloud server type"
   type        = string
-  default     = "cpx31"
+  default     = "cpx32"
 }
 
 # Hetzner location. Default is fsn1 (Falkenstein).

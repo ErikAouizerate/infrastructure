@@ -231,6 +231,15 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
         regexp: '^#?PasswordAuthentication\s'
         line: "PasswordAuthentication no"
 
+    # Ubuntu 24.04 runs sshd through socket activation: ssh.socket owns the
+    # listening port (default 22) and ignores sshd_config's "Port". Disable it
+    # so sshd binds the port defined in sshd_config (3254).
+    - name: Disable ssh socket activation
+      ansible.builtin.systemd:
+        name: ssh.socket
+        state: stopped
+        enabled: false
+
     # Restart of sshd does NOT drop already-established connections, so the
     # current root session (and this playbook) survives. New logins will need
     # port 3254 and the admin key.
@@ -343,11 +352,11 @@ Expected: all tasks OK (a few `changed`). The `upgrade: dist` step can take seve
 
 - [ ] **Step 2: Verify sshd listens on 3254**
 
-Run (from the machine):
+Run (from the machine, as admin):
 ```bash
-ssh -p 22 root@2.28.26.25 'ss -tlnp | grep sshd'
+ssh -p 3254 admin@2.28.26.25 'sudo ss -tlnp | grep sshd'
 ```
-Expected: `sshd ... LISTEN ... 0.0.0.0:3254` (and `:::3254`). Port 22 no longer listed.
+Expected: `sshd ... LISTEN ... 0.0.0.0:3254` (and `:::3254`). Port 22 no longer listed. (Note: Ubuntu 24.04 uses socket activation — the playbook disables `ssh.socket` so sshd honors `Port 3254`.)
 
 - [ ] **Step 3: Verify admin login over public SSH on 3254**
 
