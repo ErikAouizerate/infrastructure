@@ -4,7 +4,7 @@ data "hcloud_ssh_key" "default" {
   name = var.ssh_key_name
 }
 
-# The single application server: CPX31 (4 vCPU / 8 GB / 160 GB) at fsn1, Ubuntu 24.04.
+# The single application server: CPX32 (4 vCPU / 8 GB / 160 GB) at fsn1, Ubuntu 24.04.
 resource "hcloud_server" "app" {
   name         = "app"
   image        = "ubuntu-24.04"
@@ -37,6 +37,16 @@ resource "hcloud_firewall" "app" {
     port        = tostring(var.ssh_port)
     source_ips  = var.ssh_allowed_ips
     description = "SSH admin access"
+  }
+
+  # TEMPORARY bootstrap rule: allows SSH on 22 while sshd is still on the
+  # default port. Remove once Ansible has moved sshd to 3254.
+  rule {
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "22"
+    source_ips  = var.ssh_allowed_ips
+    description = "Bootstrap SSH on 22 (remove after Ansible)"
   }
 
   # HTTP(S) open to the world for now (needed once Dockploy serves test apps).
