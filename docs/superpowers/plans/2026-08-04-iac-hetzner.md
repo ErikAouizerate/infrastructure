@@ -12,6 +12,9 @@
 
 - Provider version floor: `hetznercloud/hcloud` `~> 1.63`.
 - Server: `server_type = "cpx32"`, `location = "fsn1"`, image `ubuntu-24.04`, IPv4 + IPv6 enabled.
+- `user_data` (cloud-init) on the server: writes an sshd drop-in `Port 3254`
+  and disables `ssh.socket` at first boot, so the firewall's 3254 rule is usable
+  immediately and port 22 never has to be opened (lockout-safe reapply).
 - Firewall inbound rules: allow TCP `3254` (SSH) only from `var.ssh_allowed_ips`; allow TCP `80` and `443` from anywhere; allow ICMP (needed for ping and for IPv6 neighbor discovery — blocking ICMPv6 breaks IPv6). No outbound rules (Hetzner default = allow all egress).
 - SSH key referenced by name via `data "hcloud_ssh_key"` (key already registered in Hetzner Console, not created by Terraform).
 - Secrets only in `.env` (git-ignored): `HCLOUD_TOKEN`, `TF_VAR_ssh_key_name`, `TF_VAR_ssh_allowed_ips`, `TS_AUTHKEY`. Load with `set -a && source .env && set +a` before `terraform plan`/`apply`.

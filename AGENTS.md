@@ -47,6 +47,15 @@ Because the managed firewall drops traffic before it reaches the OS, Docker
 ports published with `-p` are NOT reachable from the internet unless a firewall
 rule allows them.
 
+### Bootstrap (destroy -> apply -> provision) is lockout-safe
+
+The server's `user_data` (cloud-init) moves sshd to port `3254` and disables
+Ubuntu's `ssh.socket` at first boot. So after a fresh `terraform apply`, SSH is
+already reachable on 3254 and **port 22 is never opened**. Bootstrap the Ansible
+inventory as `root` on port `3254`, then switch to `admin` (see README). Note:
+`user_data` is `ForceNew` — changing it recreates the server. The playbook
+removes the cloud-init sshd drop-in once it manages sshd itself.
+
 ## Environment variables (root `.env`)
 
 - `HCLOUD_TOKEN` — Hetzner Cloud API token (consumed natively by the `hcloud`
@@ -62,10 +71,14 @@ rule allows them.
 
 ## Layout
 
-- `iac/` — Terraform (to be created). Single server `cpx32`, Ubuntu 24.04
-  (`ubuntu-24.04` image), SSH key via `data "hcloud_ssh_key"`, attached managed
-  firewall (`hcloud_firewall`), no private network.
-- `provisioning/` — Ansible (to be created).
+- `iac/` — Terraform. Single server `cpx32`, Ubuntu 24.04 (`ubuntu-24.04`
+  image), SSH key via `data "hcloud_ssh_key"`, attached managed firewall
+  (`hcloud_firewall`), cloud-init `user_data` for the sshd bootstrap, no
+  private network.
+- `provisioning/` — Ansible. Inventory `inventory/hosts.yml`, group vars in
+  `inventory/group_vars/` (must sit next to the inventory), playbooks in
+  `playbooks/`. Admin playbook: apt, unattended-upgrades, sudo user `admin`,
+  sshd on 3254, Tailscale, swap, hostname.
 - `specs/` and `docs/superpowers/` — feature specs and plans.
 
 ## Terraform commands

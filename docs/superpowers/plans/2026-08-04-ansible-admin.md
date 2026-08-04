@@ -4,7 +4,14 @@
 
 **Goal:** Make the fresh Hetzner server reachable and hardened for administration: dedicated sudo user, sshd on port `3254` (root + password disabled), Tailscale, unattended-upgrades, swap, hostname.
 
-**Architecture:** Ansible runs from the user's machine (control node) against the single server (`app`, IP `2.28.26.25`). The playbook bootstraps as `root` over the temporarily-opened port `22`, then hardens sshd. Docker/Dockploy/Cloudflare are explicitly out of scope.
+**Architecture:** Ansible runs from the user's machine (control node) against the single server (`app`, IP `2.28.26.25`). The server's cloud-init `user_data` (in `iac/main.tf`) already moves sshd to port `3254` at first boot, so the playbook bootstraps as `root` over port `3254` — **port 22 is never opened**. Docker/Dockploy/Cloudflare are explicitly out of scope.
+
+> **Note (updated after execution):** the original Task 0 of this plan opened a
+> temporary firewall rule for port 22 to bootstrap. That approach was replaced
+> by a cloud-init `user_data` bootstrap (`iac/main.tf`): the drop-in sets
+> `Port 3254` and disables `ssh.socket`, so a fresh server is reachable on 3254
+> immediately. The playbook then removes that drop-in once it manages sshd.
+> This was validated by re-creating the server.
 
 **Tech Stack:** Ansible (installed via `uv`), Ubuntu 24.04 target, `ansible.posix` for `authorized_key`, Tailscale install script.
 
@@ -13,16 +20,17 @@
 - Server `app`: `2.28.26.25` (IPv4), IPv6 `2a01:4f8:c014:625a::1`.
 - Admin user: `admin`, sudo NOPASSWD, key = control node `~/.ssh/id_rsa.pub`.
 - sshd final state: `Port 3254`, `PermitRootLogin no`, `PasswordAuthentication no`.
-- Firewall rule for port `22` is temporary (bootstrap only) — must be removed after the playbook.
+- No firewall rule for port `22` at all — bootstrap runs as `root` on `3254`
+  (cloud-init moves sshd there at first boot).
 - Secrets only in `.env`: `TS_AUTHKEY` is consumed at runtime (never committed).
 - Comments in English; user follows at intermediate level.
 
 ---
 
-### Task 0: Local prerequisites (Ansible + temporary port 22)
+### Task 0: Local prerequisites (Ansible + cloud-init bootstrap on the server)
 
 **Files:**
-- Modify: `iac/main.tf` (add one firewall rule)
+- Modify: `iac/main.tf` (add `user_data` to `hcloud_server`)
 
 - [ ] **Step 1: Install Ansible via uv**
 
@@ -33,47 +41,59 @@ ansible --version
 ```
 Expected: Ansible version output (e.g. `ansible [core 2.x]`). Note: the full `ansible` package bundles `ansible.posix` (needed for `authorized_key`).
 
-- [ ] **Step 2: Add temporary port-22 rule to `iac/main.tf`**
+- [ ] **Step 2: Add `user_data` (cloud-init) to `iac/main.tf`**
 
-Insert after the SSH 3254 rule:
+Add to `hcloud_server.app`:
 
 ```hcl
-  # TEMPORARY bootstrap rule: allows SSH on 22 while sshd is still on the
-  # default port. Remove once Ansible has moved sshd to 3254.
-  rule {
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "22"
-    source_ips  = var.ssh_allowed_ips
-    description = "Bootstrap SSH on 22 (remove after Ansible)"
-  }
+  # Cloud-init runs on first boot. It moves sshd to the non-standard port
+  # BEFORE anything else, so the managed firewall's 3254 rule is usable
+  # immediately and port 22 never has to be opened (destroy/reapply-safe).
+  # NOTE: user_data is ForceNew - changing it recreates the server.
+  user_data = <<-EOT
+    #cloud-config
+    write_files:
+      - path: /etc/ssh/sshd_config.d/99-bootstrap.conf
+        content: |
+          Port ${var.ssh_port}
+        permissions: "0644"
+    runcmd:
+      - [systemctl, disable, --now, ssh.socket]
+      - [systemctl, restart, ssh]
+  EOT
 ```
 
-- [ ] **Step 3: Apply the firewall change**
+`<<-EOT` strips leading whitespace, so the emitted `user_data` starts flush-left
+with `#cloud-config`.
+
+- [ ] **Step 3: Recreate the server with `user_data`**
 
 Run (from repo root):
 ```bash
 set -a && source .env && set +a
 cd iac
-terraform plan
+terraform plan    # expects: server "must be replaced" (user_data is ForceNew)
 terraform apply
 ```
-Expected: only the firewall changes (no server recreation).
+Expected: server destroyed + recreated (new IP); `user_data` is delivered to
+cloud-init. Wait a minute for first boot, then:
 
-- [ ] **Step 4: Verify root SSH works**
+- [ ] **Step 4: Verify root SSH works on port 3254**
 
 Run:
 ```bash
-ssh -p 22 root@2.28.26.25 'echo OK'
+IP=$(cd iac && terraform output -raw server_ipv4)
+ssh -p 3254 root@$IP 'echo OK && cat /etc/ssh/sshd_config.d/99-bootstrap.conf'
 ```
-Expected: prints `OK` (authenticates with the registered key). If `Permission denied`, check `~/.ssh/id_rsa` is the registered key.
+Expected: prints `OK`, then `Port 3254` (the cloud-init drop-in is in place, so
+sshd listens on 3254 and port 22 was never needed).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd ..
 git add iac/main.tf
-git commit -m "iac: temp open port 22 for Ansible bootstrap"
+git commit -m "iac: cloud-init user_data bootstrap (sshd on 3254 at first boot)"
 ```
 
 ---
@@ -103,10 +123,10 @@ all:
   hosts:
     app:
       ansible_host: 2.28.26.25
-      # Bootstrap phase: root on port 22.
+      # Bootstrap phase: root on port 3254 (cloud-init moved sshd there).
       # After the playbook: switch to admin on port 3254 (cleanup task).
       ansible_user: root
-      ansible_port: 22
+      ansible_port: 3254
 ```
 
 - [ ] **Step 3: Create `provisioning/group_vars/all.yml`**
@@ -404,33 +424,22 @@ git commit -m "provisioning: fix admin playbook after run"
 
 ---
 
-### Task 4: Cleanup — remove port 22, switch inventory to admin/3254
+### Task 4: Cleanup — switch inventory to admin/3254
 
 **Files:**
-- Modify: `iac/main.tf` (remove the temp port-22 rule)
 - Modify: `provisioning/inventory/hosts.yml` (admin on 3254)
 
-- [ ] **Step 1: Remove the temp port-22 rule from `iac/main.tf`**
+No firewall change is needed: the bootstrap used cloud-init (port 22 was never
+opened).
 
-Delete the rule added in Task 0 Step 2.
-
-- [ ] **Step 2: Update the inventory to final state**
+- [ ] **Step 1: Update the inventory to final state**
 
 ```yaml
       ansible_user: admin
       ansible_port: 3254
 ```
 
-- [ ] **Step 3: Apply the firewall change**
-
-```bash
-set -a && source .env && set +a
-cd iac
-terraform apply
-```
-Expected: firewall updated (port 22 rule removed), server untouched.
-
-- [ ] **Step 4: Confirm port 22 is closed and 3254 works**
+- [ ] **Step 2: Confirm 3254 works and port 22 is never open**
 
 Run:
 ```bash
@@ -439,7 +448,7 @@ ssh -p 3254 admin@2.28.26.25 'echo ADMIN-OK'
 ```
 Expected: `22 blocked/dropped`, then `ADMIN-OK`.
 
-- [ ] **Step 5: Re-run the playbook idempotency check**
+- [ ] **Step 3: Re-run the playbook idempotency check**
 
 Run (as admin over 3254 now):
 ```bash
@@ -449,12 +458,12 @@ ansible-playbook playbooks/admin.yml
 ```
 Expected: no failures; mostly `ok`, minimal `changed` (proves idempotency).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 cd ..
-git add iac/main.tf provisioning/inventory/hosts.yml
-git commit -m "iac+provisioning: move to admin user on port 3254, close bootstrap port 22"
+git add provisioning/inventory/hosts.yml
+git commit -m "provisioning: switch inventory to admin user on port 3254"
 ```
 
 ---

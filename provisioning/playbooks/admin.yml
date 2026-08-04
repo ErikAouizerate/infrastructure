@@ -87,6 +87,15 @@
         enabled: false
       notify: Restart sshd
 
+    # The cloud-init bootstrap drop-in (set at server creation) only set the
+    # port. Once this playbook manages sshd via the main config, remove it so
+    # there is a single source of truth.
+    - name: Remove cloud-init bootstrap sshd drop-in
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d/99-bootstrap.conf
+        state: absent
+      notify: Restart sshd
+
     # --- 5. Tailscale --------------------------------------------------------
     - name: Download Tailscale installer
       ansible.builtin.get_url:

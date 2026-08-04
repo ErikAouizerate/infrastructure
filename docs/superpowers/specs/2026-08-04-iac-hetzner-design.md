@@ -26,6 +26,7 @@ firewall.
 | ICMP | allowed inbound | Ping, and IPv6 neighbor discovery (blocking ICMPv6 breaks IPv6) |
 | Private network | none | Single server; nothing to isolate |
 | NAT / nftables | none | Handled by the managed firewall |
+| Bootstrap | cloud-init `user_data` on the server: drop-in `Port 3254` + disable `ssh.socket` | Fresh `apply` is reachable on 3254 immediately; port 22 never opened (lockout-safe destroy/reapply) |
 | Terraform state | local (`.terraform/`) | Fine for learning; remote backend (Hetzner Object Storage, S3-compatible) noted as a future improvement |
 | Terraform layout | flat files in `iac/` | Small footprint; no modules yet |
 

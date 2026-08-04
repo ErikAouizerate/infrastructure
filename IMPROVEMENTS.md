@@ -11,9 +11,6 @@ Backlog of improvements, in rough priority order. Update as work proceeds.
       Currently `80`/`443` are open to the world.
 - [ ] **SSH admin path**: consider Tailscale-only access (drop the public
       `3254` rule) once comfortable.
-- [ ] **Tailscale node name**: the server joined as `app-1` because an old
-      offline node `app` still exists in the tailnet. Rename/clean up in the
-      Tailscale admin console.
 
 ## Provisioning
 
