@@ -27,7 +27,7 @@ Dockploy and Cloudflare (later steps).
 | SSH port | sshd on `3254`; `PermitRootLogin no`, `PasswordAuthentication no` set by cloud-init at boot, kept in sync by Ansible | Non-standard port; key-only; matches the firewall rule |
 | Admin access | public SSH `3254` (firewall, admin IPs) **and** Tailscale | Redundancy: SSH public as fallback, Tailscale as secondary path |
 | Bootstrap path | cloud-init `user_data` creates `admin` + sets sshd drop-in (`Port 3254`, `PermitRootLogin no`, `PasswordAuthentication no`) + disables `ssh.socket` | Ansible connects directly as `admin` on 3254; validated by re-creating the server |
-| Ansible install | `uv tool install ansible` (uv already present) | Clean, isolated install |
+| Ansible install | project venv via `uv sync` (see `pyproject.toml`) | Reproducible, no global install; `.envrc` puts `.venv/bin` on PATH |
 | Swap | 2 GB swapfile | 8 GB RAM will be tight later (Docker apps + DBs) |
 | Security extras | `unattended-upgrades` enabled | Automatic security patches |
 | Excluded | fail2ban (low value: key-only + IP allowlist + managed firewall), timezone stays UTC, Docker, Dockploy, Cloudflare | Scope of this plan |

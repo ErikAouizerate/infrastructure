@@ -8,15 +8,23 @@ Hetzner firewall. See `docs/superpowers/specs/` for the design and rationale.
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.0
-- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)
-  installed via uv: `uv tool install ansible`
-- A `.env` file configured at the root (see below)
+- [uv](https://docs.astral.sh/uv/) (Python tooling + project venv)
+- [direnv](https://direnv.net/) (auto-loads `.env` and the venv; hook must be in
+  your shell: `eval "$(direnv hook zsh)"`)
 - An SSH key registered in Hetzner Cloud
+
+Ansible is not installed globally: it lives in the project venv.
+
+```bash
+uv sync        # creates .venv/ with Ansible (pyproject.toml)
+direnv allow   # enable .envrc auto-loading (once)
+```
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in the values. Load it before any
-Terraform/Ansible run:
+Copy `.env.example` to `.env` and fill in the values. `.env` is loaded
+automatically by direnv (via `.envrc`) whenever you `cd` into the repo. If you
+don't use direnv, load it manually:
 
 ```bash
 set -a && source .env && set +a
@@ -34,7 +42,6 @@ there is no root bootstrap**.
 # 1. Create the infrastructure (server + managed firewall)
 cd iac
 terraform init
-set -a && source ../.env && set +a
 terraform apply
 
 # 2. Get the new public IP and put it in the inventory
@@ -42,7 +49,6 @@ terraform output -raw server_ipv4   # -> update provisioning/inventory/hosts.yml
 
 # 3. Provision the server (as admin, created by cloud-init)
 cd ../provisioning
-set -a && source ../.env && set +a
 ansible-playbook playbooks/admin.yml   # idempotent, can be re-run
 ```
 
@@ -63,7 +69,6 @@ terraform output
 ## Destroy
 
 ```bash
-set -a && source .env && set +a
 cd iac
 terraform destroy
 ```

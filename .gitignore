@@ -3,3 +3,8 @@
 *.tfstate
 *.tfstate.backup
 *.tfvars
+
+# Python/uv tooling
+.venv/
+.direnv/
+

@@ -70,8 +70,10 @@ drop-in once it manages sshd itself.
   (must be quoted: the key contains spaces).
 - `TS_AUTHKEY` — Tailscale auth key used by the server.
 
-`.env` is loaded with `set -a && source .env && set +a` before running
-`terraform plan` / `apply`. `.tfvars` are git-ignored.
+`.env` is loaded automatically by direnv (`.envrc` at the repo root also puts
+`.venv/bin` on PATH, so `ansible*` and `terraform` just work after `cd`). If
+direnv is not available, load `.env` manually with
+`set -a && source .env && set +a`. `.tfvars` are git-ignored.
 
 ## Layout
 
@@ -84,13 +86,14 @@ drop-in once it manages sshd itself.
   `playbooks/`. Admin playbook: apt, unattended-upgrades, sshd on 3254,
   Tailscale, swap, hostname. The `admin` user is created by cloud-init (not by
   Ansible).
+- `.envrc` — direnv: activates `.venv` and loads `.env` automatically.
+- `pyproject.toml` + `uv.lock` — project tooling (Ansible), venv via `uv sync`.
 - `specs/` and `docs/superpowers/` — feature specs and plans.
 
 ## Terraform commands
 
 ```bash
-source .env
-cd iac
+cd iac           # direnv loads .env automatically
 terraform init
 terraform plan
 terraform apply

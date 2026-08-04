@@ -35,14 +35,14 @@
 **Files:**
 - Modify: `iac/main.tf` (add `user_data` to `hcloud_server`)
 
-- [ ] **Step 1: Install Ansible via uv**
+- [ ] **Step 1: Install Ansible via the project venv**
 
 Run:
 ```bash
-uv tool install ansible
-ansible --version
+uv sync        # creates .venv/ with Ansible (see pyproject.toml)
+.venv/bin/ansible --version
 ```
-Expected: Ansible version output (e.g. `ansible [core 2.x]`). Note: the full `ansible` package bundles `ansible.posix` (needed for `authorized_key`).
+Expected: Ansible version output (e.g. `ansible [core 2.x]`). Note: the full `ansible` package bundles `ansible.posix`.
 
 - [ ] **Step 2: Add `user_data` (cloud-init) to `iac/main.tf`**
 
@@ -456,5 +456,5 @@ git commit -m "provisioning: switch inventory to admin user on port 3254"
 
 - **Keep the running SSH session open** during the playbook run: after the sshd restart, the current connection survives but a NEW connection as root would be refused.
 - **If locked out anyway:** the Hetzner Console rescue system is the fallback (boot rescue, mount disk, fix `/etc/ssh/sshd_config`).
-- If `ansible.posix` is missing (`authorized_key` fails): ensure the full `ansible` package was installed (`uv tool install ansible`), not `ansible-core`.
+- If `ansible.posix` is missing (`authorized_key` fails): ensure the full `ansible` package was installed via `uv sync`, not `ansible-core`.
 - The `upgrade: dist` step may reboot the server if the kernel is updated; the playbook connection can drop. Rerun the playbook afterwards — it is idempotent.

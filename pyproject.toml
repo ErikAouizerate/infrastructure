@@ -1,0 +1,10 @@
+# Project-local Python tooling (Ansible for the provisioning step).
+# Create/refresh the venv with: uv sync
+[project]
+name = "infrastructure_v2"
+version = "0.1.0"
+description = "Terraform + Ansible infrastructure for Hetzner Cloud"
+requires-python = ">=3.12"
+dependencies = [
+    "ansible",
+]
