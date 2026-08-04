@@ -1,0 +1,3 @@
+---
+dokploy_install_script_url: https://dokploy.com/install.sh
+dokploy_config_dir: /etc/dokploy

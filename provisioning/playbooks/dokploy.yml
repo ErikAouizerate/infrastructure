@@ -1,0 +1,6 @@
+---
+- name: Install Dokploy (Docker CE + Dokploy PaaS)
+  hosts: app
+  become: true
+  roles:
+    - role: dokploy
