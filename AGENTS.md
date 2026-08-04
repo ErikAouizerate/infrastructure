@@ -27,24 +27,25 @@ work starts fresh, one step at a time (tools -> IaC -> provisioning).
 
 ## Target architecture (planned)
 
-Two Hetzner servers:
+A single Hetzner server (decided during brainstorming — the original 2-server
+gateway design was dropped):
 
-- Gateway/firewall: L4 firewall open on the internet, SSH on non-standard port
-  `3254`. Public IP; IPv6-only preferred (cheaper on Hetzner).
-- Applications server: closed to the internet, reachable only from the gateway
-  over a private network (`192.168.0.0/16`, subnet `192.168.1.0/24`; the original
-  `10.0.0.0/16` was dropped to avoid colliding with Docker networks — Docker's
-  default pool is `172.16.0.0/12` and Tailscale uses `100.64.0.0/10`). Runs
-  Dockploy to manage per-project Docker Compose stacks; DBs will be kept in the
-  app Compose files initially (migrate to a dedicated storage server later only
-  if it becomes constraining).
-- Tailscale on both servers for admin access from the user's machine.
+- One server: Hetzner **CPX31** (4 vCPU / 8 GB / 160 GB), location `fsn1`,
+  Ubuntu 24.04 LTS, public IPv4 + IPv6.
+- L4 protection = Hetzner managed firewall (`hcloud_firewall`, free, stateful,
+  implicit deny inbound). SSH on non-standard port `3254` allowed only from
+  `var.ssh_allowed_ips`; ports 80/443 open (to be restricted to Cloudflare IPs
+  at the last step). No nftables, no NAT, no private network (single server).
+- Runs Dockploy to manage per-project Docker Compose stacks; DBs are kept in the
+  app Compose files (migrate to a dedicated storage server later only if
+  constraining).
+- Tailscale on the server for admin access from the user's machine.
 - Cloudflare in front for L7 firewall with domain `ebag.click` — deliberately the
   LAST step (requires config changes on Cloudflare side).
 
-Server plans (from the user's notes):
-- gateway: CX23, 2 vCPU / 4 GB / 40 GB / 20 TB (~€6.59/mo)
-- applications: CPX22, 2 vCPU / 4 GB / 80 GB / 20 TB (~€23.39/mo)
+Because the managed firewall drops traffic before it reaches the OS, Docker
+ports published with `-p` are NOT reachable from the internet unless a firewall
+rule allows them.
 
 ## Environment variables (root `.env`)
 
@@ -54,16 +55,16 @@ Server plans (from the user's notes):
 - `TF_VAR_ssh_allowed_ips` — JSON list of admin CIDRs allowed to SSH to the
   firewall, e.g. `TF_VAR_ssh_allowed_ips='["1.2.3.4/32"]'` (single-quote so the
   shell keeps the quotes).
-- `TS_AUTHKEY` — Tailscale auth key used by both servers.
+- `TS_AUTHKEY` — Tailscale auth key used by the server.
 
 `.env` is loaded with `set -a && source .env && set +a` before running
 `terraform plan` / `apply`. `.tfvars` are git-ignored.
 
 ## Layout
 
-- `iac/` — Terraform (to be created). Original design: gateway = `cpx22`,
-  AlmaLinux (`alma-10`) image, SSH key via `data "hcloud_ssh_key"`; app server
-  has no public IP and is attached to the private subnet at creation time.
+- `iac/` — Terraform (to be created). Single server `cpx31`, Ubuntu 24.04
+  (`ubuntu-24.04` image), SSH key via `data "hcloud_ssh_key"`, attached managed
+  firewall (`hcloud_firewall`), no private network.
 - `provisioning/` — Ansible (to be created).
 - `specs/` and `docs/superpowers/` — feature specs and plans.
 
