@@ -4,6 +4,23 @@ data "hcloud_ssh_key" "default" {
   name = var.ssh_key_name
 }
 
+# Cloudflare publishes its reverse-proxy IP ranges at this public endpoint.
+# We use them to restrict HTTP/S access to Cloudflare only (L7 protection).
+data "http" "cloudflare_ips" {
+  url = "https://api.cloudflare.com/client/v4/ips"
+
+  request_headers = {
+    Accept = "application/json"
+  }
+}
+
+locals {
+  cloudflare_ips = concat(
+    try(jsondecode(data.http.cloudflare_ips.response_body).result.ipv4_cidrs, []),
+    try(jsondecode(data.http.cloudflare_ips.response_body).result.ipv6_cidrs, []),
+  )
+}
+
 # The single application server: CPX32 (4 vCPU / 8 GB / 160 GB) at fsn1, Ubuntu 24.04.
 resource "hcloud_server" "app" {
   name         = "app"
@@ -73,22 +90,22 @@ resource "hcloud_firewall" "app" {
     description = "SSH admin access"
   }
 
-  # HTTP(S) open to the world for now (needed once Dockploy serves test apps).
-  # To be restricted to Cloudflare IP ranges at the Cloudflare step.
+  # Only Cloudflare reverse-proxy IPs may reach the origin on ports 80/443.
+  # The IP list is fetched from Cloudflare's public API at plan/apply time.
   rule {
     direction   = "in"
     protocol    = "tcp"
     port        = "80"
-    source_ips  = ["0.0.0.0/0", "::/0"]
-    description = "HTTP (to be restricted to Cloudflare)"
+    source_ips  = local.cloudflare_ips
+    description = "HTTP (Cloudflare only)"
   }
 
   rule {
     direction   = "in"
     protocol    = "tcp"
     port        = "443"
-    source_ips  = ["0.0.0.0/0", "::/0"]
-    description = "HTTPS (to be restricted to Cloudflare)"
+    source_ips  = local.cloudflare_ips
+    description = "HTTPS (Cloudflare only)"
   }
 
   # ICMP for ping and, importantly, for IPv6 neighbor discovery: without this,
