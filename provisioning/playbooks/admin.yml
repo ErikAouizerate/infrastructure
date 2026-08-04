@@ -1,0 +1,153 @@
+---
+- name: Admin provisioning (bootstrap + hardening)
+  hosts: app
+  become: true
+  tasks:
+    # --- 1. System update ----------------------------------------------------
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      tags: upgrade
+
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: dist
+      tags: upgrade
+
+    # --- 2. Automatic security updates --------------------------------------
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Enable periodic auto-upgrades
+      ansible.builtin.copy:
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+
+    # --- 3. Dedicated sudo user ----------------------------------------------
+    - name: Create admin user
+      ansible.builtin.user:
+        name: "{{ admin_user }}"
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        create_home: true
+
+    - name: Grant passwordless sudo to admin
+      ansible.builtin.copy:
+        content: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        dest: "/etc/sudoers.d/{{ admin_user }}"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"
+
+    - name: Install admin SSH public key
+      ansible.posix.authorized_key:
+        user: "{{ admin_user }}"
+        key: "{{ admin_ssh_public_key }}"
+        state: present
+
+    # --- 4. Harden sshd (new SSH port, key-only) ----------------------------
+    - name: Set sshd port
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?Port\s'
+        line: "Port {{ ssh_port }}"
+
+    - name: Disable root login over SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin\s'
+        line: "PermitRootLogin no"
+
+    - name: Disable password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication\s'
+        line: "PasswordAuthentication no"
+
+    # Restart of sshd does NOT drop already-established connections, so the
+    # current root session (and this playbook) survives. New logins will need
+    # port 3254 and the admin key.
+    - name: Restart sshd
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
+    # --- 5. Tailscale --------------------------------------------------------
+    - name: Download Tailscale installer
+      ansible.builtin.get_url:
+        url: https://tailscale.com/install.sh
+        dest: /tmp/tailscale-install.sh
+        mode: "0755"
+
+    - name: Run Tailscale installer
+      ansible.builtin.command: /tmp/tailscale-install.sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Get Tailscale status
+      ansible.builtin.command: tailscale status --json
+      register: ts_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Join the tailnet with the auth key
+      ansible.builtin.command: >-
+        tailscale up --authkey={{ tailscale_authkey }}
+        --hostname={{ inventory_hostname }}
+      when: ts_status.rc != 0 or '"Running"' not in ts_status.stdout
+      no_log: true
+
+    # --- 6. Swap + base packages --------------------------------------------
+    - name: Create swapfile
+      ansible.builtin.command: "fallocate -l {{ swap_size_mb }}M /swapfile"
+      args:
+        creates: /swapfile
+      register: swapfile_created
+
+    - name: Set swapfile permissions
+      ansible.builtin.file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Format swapfile
+      ansible.builtin.command: mkswap /swapfile
+      when: swapfile_created.changed
+
+    - name: Enable swap
+      ansible.builtin.command: swapon /swapfile
+      when: swapfile_created.changed
+
+    - name: Add swap to fstab
+      ansible.builtin.mount:
+        path: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        state: present
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - git
+          - htop
+          - jq
+          - ca-certificates
+        state: present
+
+    # --- 7. Hostname ---------------------------------------------------------
+    - name: Set hostname
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
