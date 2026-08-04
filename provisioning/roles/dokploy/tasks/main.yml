@@ -1,0 +1,55 @@
+---
+- name: Ensure prerequisites are installed
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+    state: present
+  become: true
+
+- name: Check if Dokploy is already installed
+  ansible.builtin.stat:
+    path: "{{ dokploy_config_dir }}"
+  register: dokploy_config_stat
+
+- name: Block install if already present
+  when: dokploy_config_stat.stat.exists
+  block:
+    - name: Verify Dokploy service is running
+      ansible.builtin.shell:
+        cmd: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: swarm_state
+      changed_when: false
+      failed_when: swarm_state.stdout != "active"
+
+    - name: Dokploy already installed
+      ansible.builtin.debug:
+        msg: "Dokploy is already installed and Swarm is active. Skipping."
+      changed_when: false
+
+- name: Ensure ports 80, 443, 3000 are free
+  ansible.builtin.shell:
+    cmd: >
+      ss -tulnp |
+      grep -E ':(80|443|3000) ' &&
+      echo "PORT OCCUPIED" || echo "PORTS FREE"
+  register: port_check
+  changed_when: false
+  failed_when: "'PORT OCCUPIED' in port_check.stdout"
+  when: not dokploy_config_stat.stat.exists
+
+- name: Install Dokploy via official script
+  ansible.builtin.shell:
+    cmd: curl -sSL {{ dokploy_install_script_url }} | sh
+  args:
+    creates: "{{ dokploy_config_dir }}"
+  register: install_result
+  when: not dokploy_config_stat.stat.exists
+
+- name: Verify Docker Swarm is active after install
+  ansible.builtin.shell:
+    cmd: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+  register: swarm_state_post
+  changed_when: false
+  failed_when: swarm_state_post.stdout != "active"
+  when: install_result is changed
