@@ -49,14 +49,15 @@ terraform output -raw server_ipv4   # -> update provisioning/inventory/hosts.yml
 
 # 3. Provision the server (as admin, created by cloud-init)
 cd ../provisioning
-ansible-playbook playbooks/admin.yml   # idempotent, can be re-run
+ansible-playbook playbooks/admin.yml
+ansible-playbook playbooks/dokploy.yml
 ```
 
 Access:
 
 ```bash
 ssh -p 3254 admin@<server-ip>          # public SSH (firewall: admin IPs only)
-ssh admin@<tailscale-ip>               # via Tailscale (100.x)
+ssh -p 3254 admin@<tailscale-ip>               # via Tailscale (100.x)
 ```
 
 ## Get server IPs
