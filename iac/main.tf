@@ -38,6 +38,11 @@ resource "hcloud_server" "app" {
           PasswordAuthentication no
         permissions: "0644"
     runcmd:
+      # Pre-create Ansible's remote tmp dirs with the right ownership, so
+      # Ansible never has to create them itself under `become` (which emits a
+      # "remote_tmp ... created with a mode of 0700" warning).
+      - [install, -d, -m, "0700", -o, root, -g, root, /root/.ansible/tmp]
+      - [install, -d, -m, "0700", -o, ${var.admin_user}, -g, ${var.admin_user}, /home/${var.admin_user}/.ansible/tmp]
       - [systemctl, disable, --now, ssh.socket]
       - [systemctl, restart, ssh]
   EOT

@@ -32,6 +32,7 @@ Dockploy and Cloudflare (later steps).
 | Security extras | `unattended-upgrades` enabled | Automatic security patches |
 | Excluded | fail2ban (low value: key-only + IP allowlist + managed firewall), timezone stays UTC, Docker, Dockploy, Cloudflare | Scope of this plan |
 | Tailscale | install + join tailnet with `TS_AUTHKEY` from `.env` | Admin access from the user's machine |
+| Warning hygiene | `ansible_python_interpreter: /usr/bin/python3` pinned in group_vars; Ansible `remote_tmp` dirs pre-created by cloud-init; stale `ansible.posix` 2.1.0 in `~/.ansible/collections` removed (its modules import deprecated `ansible.module_utils._text`) | Zero warnings instead of silencing them (`deprecation_warnings` is NOT disabled) |
 
 ## Playbook flow (lockout-safe ordering)
 

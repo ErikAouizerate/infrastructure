@@ -17,8 +17,6 @@ Backlog of improvements, in rough priority order. Update as work proceeds.
 - [ ] **Docker + Dockploy** (next plan) for per-project Compose stacks.
 - [ ] **Database backups to Hetzner Object Storage** (pg_dump/mysqldump via
       cron/rclone) before any real DB runs on the server.
-- [ ] Add `deprecation_warnings = False` to `ansible.cfg` if module warnings
-      bother the output.
 
 ## General
 

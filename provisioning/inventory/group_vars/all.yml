@@ -1,4 +1,8 @@
 ---
+# Pin the remote Python interpreter so Ansible does not guess it on each run
+# (avoids the "discovered Python interpreter" warning).
+ansible_python_interpreter: /usr/bin/python3
+
 # SSH port sshd will listen on after provisioning (matches the firewall rule).
 ssh_port: 3254
 
