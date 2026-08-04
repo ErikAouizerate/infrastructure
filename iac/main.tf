@@ -39,16 +39,6 @@ resource "hcloud_firewall" "app" {
     description = "SSH admin access"
   }
 
-  # TEMPORARY bootstrap rule: allows SSH on 22 while sshd is still on the
-  # default port. Remove once Ansible has moved sshd to 3254.
-  rule {
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "22"
-    source_ips  = var.ssh_allowed_ips
-    description = "Bootstrap SSH on 22 (remove after Ansible)"
-  }
-
   # HTTP(S) open to the world for now (needed once Dockploy serves test apps).
   # To be restricted to Cloudflare IP ranges at the Cloudflare step.
   rule {

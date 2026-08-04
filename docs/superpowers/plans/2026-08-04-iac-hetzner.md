@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Provision one Hetzner Cloud server (CPX31, Ubuntu 24.04) with an attached managed firewall, from Terraform code in `iac/`.
+**Goal:** Provision one Hetzner Cloud server (CPX32, Ubuntu 24.04) with an attached managed firewall, from Terraform code in `iac/`.
 
 **Architecture:** Single server with public IPv4 + IPv6, no private network, no NAT. The Hetzner managed firewall (`hcloud_firewall`) is the only L4 protection: stateful, implicit deny inbound, enforced before packets reach the OS (so Docker-published ports stay invisible from the internet). Cloudflare (L7) is a later, separate step.
 
@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Provider version floor: `hetznercloud/hcloud` `~> 1.63`.
-- Server: `server_type = "cpx31"`, `location = "fsn1"`, image `ubuntu-24.04`, IPv4 + IPv6 enabled.
+- Server: `server_type = "cpx32"`, `location = "fsn1"`, image `ubuntu-24.04`, IPv4 + IPv6 enabled.
 - Firewall inbound rules: allow TCP `3254` (SSH) only from `var.ssh_allowed_ips`; allow TCP `80` and `443` from anywhere; allow ICMP (needed for ping and for IPv6 neighbor discovery — blocking ICMPv6 breaks IPv6). No outbound rules (Hetzner default = allow all egress).
 - SSH key referenced by name via `data "hcloud_ssh_key"` (key already registered in Hetzner Console, not created by Terraform).
 - Secrets only in `.env` (git-ignored): `HCLOUD_TOKEN`, `TF_VAR_ssh_key_name`, `TF_VAR_ssh_allowed_ips`, `TS_AUTHKEY`. Load with `set -a && source .env && set +a` before `terraform plan`/`apply`.
@@ -27,7 +27,7 @@
 - Create: `iac/variables.tf`
 
 **Interfaces:**
-- Produces: variables `ssh_key_name` (string), `ssh_allowed_ips` (list of string), `server_type` (string, default `cpx31`), `location` (string, default `fsn1`), `ssh_port` (number, default `3254`). Task 2 consumes these exact names.
+- Produces: variables `ssh_key_name` (string), `ssh_allowed_ips` (list of string), `server_type` (string, default `cpx32`), `location` (string, default `fsn1`), `ssh_port` (number, default `3254`). Task 2 consumes these exact names.
 
 - [ ] **Step 1: Create `iac/providers.tf`**
 
@@ -63,11 +63,11 @@ variable "ssh_allowed_ips" {
   type        = list(string)
 }
 
-# Hetzner server type. Default is cpx31 (4 vCPU / 8 GB / 160 GB).
+# Hetzner server type. Default is cpx32 (4 vCPU / 8 GB / 160 GB).
 variable "server_type" {
   description = "Hetzner Cloud server type"
   type        = string
-  default     = "cpx31"
+  default     = "cpx32"
 }
 
 # Hetzner location. Default is fsn1 (Falkenstein).
@@ -131,7 +131,7 @@ data "hcloud_ssh_key" "default" {
   name = var.ssh_key_name
 }
 
-# The single application server: CPX31 (4 vCPU / 8 GB / 160 GB) at fsn1, Ubuntu 24.04.
+# The single application server: CPX32 (4 vCPU / 8 GB / 160 GB) at fsn1, Ubuntu 24.04.
 resource "hcloud_server" "app" {
   name        = "app"
   image       = "ubuntu-24.04"
@@ -213,7 +213,7 @@ Expected: fmt reports no changes (or run `terraform fmt` to fix), validate retur
 ```bash
 cd ..
 git add iac/main.tf
-git commit -m "iac: add app server (cpx31, ubuntu-24.04) with managed firewall"
+git commit -m "iac: add app server (cpx32, ubuntu-24.04) with managed firewall"
 ```
 
 ---

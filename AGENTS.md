@@ -30,7 +30,7 @@ work starts fresh, one step at a time (tools -> IaC -> provisioning).
 A single Hetzner server (decided during brainstorming — the original 2-server
 gateway design was dropped):
 
-- One server: Hetzner **CPX31** (4 vCPU / 8 GB / 160 GB), location `fsn1`,
+- One server: Hetzner **CPX32** (4 vCPU / 8 GB / 160 GB), location `fsn1`,
   Ubuntu 24.04 LTS, public IPv4 + IPv6.
 - L4 protection = Hetzner managed firewall (`hcloud_firewall`, free, stateful,
   implicit deny inbound). SSH on non-standard port `3254` allowed only from
@@ -62,7 +62,7 @@ rule allows them.
 
 ## Layout
 
-- `iac/` — Terraform (to be created). Single server `cpx31`, Ubuntu 24.04
+- `iac/` — Terraform (to be created). Single server `cpx32`, Ubuntu 24.04
   (`ubuntu-24.04` image), SSH key via `data "hcloud_ssh_key"`, attached managed
   firewall (`hcloud_firewall`), no private network.
 - `provisioning/` — Ansible (to be created).

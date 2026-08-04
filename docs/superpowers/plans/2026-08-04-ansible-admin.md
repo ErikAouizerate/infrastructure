@@ -218,18 +218,21 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
         path: /etc/ssh/sshd_config
         regexp: '^#?Port\s'
         line: "Port {{ ssh_port }}"
+      notify: Restart sshd
 
     - name: Disable root login over SSH
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?PermitRootLogin\s'
         line: "PermitRootLogin no"
+      notify: Restart sshd
 
     - name: Disable password authentication
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?PasswordAuthentication\s'
         line: "PasswordAuthentication no"
+      notify: Restart sshd
 
     # Ubuntu 24.04 runs sshd through socket activation: ssh.socket owns the
     # listening port (default 22) and ignores sshd_config's "Port". Disable it
@@ -239,14 +242,7 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
         name: ssh.socket
         state: stopped
         enabled: false
-
-    # Restart of sshd does NOT drop already-established connections, so the
-    # current root session (and this playbook) survives. New logins will need
-    # port 3254 and the admin key.
-    - name: Restart sshd
-      ansible.builtin.systemd:
-        name: ssh
-        state: restarted
+      notify: Restart sshd
 
     # --- 5. Tailscale --------------------------------------------------------
     - name: Download Tailscale installer
@@ -317,6 +313,15 @@ git commit -m "provisioning: add ansible skeleton (cfg, inventory, group_vars)"
     - name: Set hostname
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
+
+  handlers:
+    # Restart of sshd does NOT drop already-established connections, so the
+    # current session (and this playbook) survives. New logins will need
+    # port 3254 and the admin key.
+    - name: Restart sshd
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
 ```
 
 - [ ] **Step 2: Syntax check**

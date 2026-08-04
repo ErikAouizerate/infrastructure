@@ -6,7 +6,7 @@ Roadmap step: provisioning, part 1 of 2 (administration only; Docker/Dockploy la
 
 ## Context
 
-The single Hetzner server (CPX31, Ubuntu 24.04) is deployed via Terraform
+The single Hetzner server (CPX32, Ubuntu 24.04) is deployed via Terraform
 (`iac/`). The server is currently unreachable by SSH: the managed firewall only
 opens port `3254`, but Ubuntu sshd still listens on port `22` (configuring sshd
 to `3254` is this plan's job). The browser console cannot log in because the

@@ -17,7 +17,7 @@ firewall.
 | Topic | Decision | Rationale |
 |---|---|---|
 | Server count | 1 server | Managed firewall makes a dedicated gateway redundant |
-| Hetzner plan | CPX31 (4 vCPU / 8 GB / 160 GB), location `fsn1` | RAM is the bottleneck for 6-10 Docker apps with DBs; budget freed by dropping the gateway |
+| Hetzner plan | CPX32 (4 vCPU / 8 GB / 160 GB), location `fsn1` | RAM is the bottleneck for 6-10 Docker apps with DBs; budget freed by dropping the gateway |
 | Image | Ubuntu 24.04 LTS (`ubuntu-24.04`) | Smoothest Docker/Dockploy support; avoids RHEL/SELinux friction |
 | IP addressing | public IPv4 + IPv6 | Primary IPv4 is included free; avoids NAT64 complexity |
 | L4 firewall | Hetzner managed firewall (`hcloud_firewall`) | Free, stateful, implicit deny inbound, enforced before packets reach the OS |
@@ -35,7 +35,7 @@ firewall.
 Internet ──> Cloudflare (L7, last step) ──> [80/443] ─┐
                                                    ▼
                               SINGLE SERVER (Hetzner, fsn1)
-                              CPX31 · Ubuntu 24.04 · IPv4 + IPv6
+                              CPX32 · Ubuntu 24.04 · IPv4 + IPv6
                               ├─ hcloud_firewall (managed L4)
                               │    ├─ allow TCP 3254 from ssh_allowed_ips
                               │    ├─ allow TCP 80,443 from anywhere (tighten to Cloudflare later)
@@ -67,7 +67,7 @@ Files are kept flat and commented (user is intermediate, wants to follow along).
 |---|---|---|---|
 | `ssh_key_name` | `TF_VAR_ssh_key_name` | — | name of the SSH key registered in Hetzner |
 | `ssh_allowed_ips` | `TF_VAR_ssh_allowed_ips` | — | `["1.2.3.4/32"]` |
-| `server_type` | — | `cpx31` | `cpx31` |
+| `server_type` | — | `cpx32` | `cpx32` |
 | `location` | — | `fsn1` | `fsn1` |
 | `ssh_port` | — | `3254` | `3254` |
 
@@ -90,5 +90,5 @@ Files are kept flat and commented (user is intermediate, wants to follow along).
   impossible. Noted as a future improvement.
 - **Single point of failure**: one server hosts everything. Acceptable for this
   scale; a dedicated storage server is the documented escape hatch if needed.
-- **Plan name/pricing**: CPX31 name and price to be confirmed on hetzner.com
+- **Plan name/pricing**: CPX32 name and price to be confirmed on hetzner.com
   before applying.
