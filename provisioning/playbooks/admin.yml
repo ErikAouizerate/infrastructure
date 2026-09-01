@@ -65,6 +65,28 @@
         enabled: false
       notify: Restart sshd
 
+    # CRITICAL: explicitly ensure the standalone ssh.service is ENABLED and
+    # RUNNING. sshd ships with ssh.socket enabled by default, but ssh.service
+    # is NOT guaranteed to be enabled. If we only disable the socket (above)
+    # and ssh.service happens to be disabled too, NOTHING listens on any port
+    # at the next boot -> total lockout (this exact incident). Enabling the
+    # service guarantees sshd starts on boot on the port from sshd_config.
+    - name: Ensure sshd (ssh.service) is enabled and running
+      ansible.builtin.systemd:
+        name: ssh
+        state: started
+        enabled: true
+
+    # Defense-in-depth: fail the playbook early if sshd is not actually bound
+    # to the configured port. Without this, a misconfiguration that silently
+    # leaves sshd down would only be discovered on the next lockout.
+    - name: Verify sshd is listening on the configured port
+      ansible.builtin.wait_for:
+        host: "127.0.0.1"
+        port: "{{ ssh_port }}"
+        timeout: 10
+        state: started
+
     # The cloud-init bootstrap drop-in (set at server creation) only set the
     # port. Once this playbook manages sshd via the main config, remove it so
     # there is a single source of truth.
