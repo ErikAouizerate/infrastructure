@@ -30,6 +30,16 @@ resource "hcloud_server" "app" {
   ssh_keys     = [data.hcloud_ssh_key.default.id]
   firewall_ids = [hcloud_firewall.app.id]
 
+  # The server was imported into Terraform. ssh_keys and user_data are
+  # write-once fields (set at creation, ForceNew) that the Hetzner API does
+  # NOT return, so they come back empty in state and would make Terraform
+  # want to recreate the server on every plan. ignore_changes keeps the
+  # imported server in place: the running server already has the right key
+  # and cloud-init script, so we never want Terraform to rebuild it.
+  lifecycle {
+    ignore_changes = [ssh_keys, user_data]
+  }
+
   # Cloud-init runs on first boot. It creates the sudo user "admin" and moves
   # sshd to the non-standard port (and disables root/password login) BEFORE
   # anything else, so the managed firewall's 3254 rule is usable immediately
@@ -106,6 +116,15 @@ resource "hcloud_firewall" "app" {
     port        = "443"
     source_ips  = local.cloudflare_ips
     description = "HTTPS (Cloudflare only)"
+  }
+
+  # QUIC / HTTP/3 runs over UDP 443, also reverse-proxied by Cloudflare.
+  rule {
+    direction   = "in"
+    protocol    = "udp"
+    port        = "443"
+    source_ips  = local.cloudflare_ips
+    description = "QUIC/HTTP3 (Cloudflare only)"
   }
 
   # ICMP for ping and, importantly, for IPv6 neighbor discovery: without this,

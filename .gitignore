@@ -1,7 +1,8 @@
 .env
 .terraform/
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
+*.tfplan
 *.tfvars
 
 # Python/uv tooling

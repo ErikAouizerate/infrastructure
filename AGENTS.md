@@ -2,101 +2,69 @@
 
 ## Communication
 
-- Communicate with the user in French. Write code, documentation, and tests in English.
-- The user is at an intermediate level in this domain: proceed step by step and add
-  explanatory comments on relevant lines so they can follow what each file does.
+- Speak French with the user. Write code, docs, and commits in English.
+- The user is intermediate level: add explanatory comments on relevant lines so they can follow what each file does.
 
 ## Workflow
 
-- Brainstorm features with the user (in French) before building. Record design
-  decisions in `docs/superpowers/specs/` and implementation plans in
-  `docs/superpowers/plans/`; update them whenever architecture or scope changes.
-  Commit docs alongside the code they document.
-- Keep `IMPROVEMENTS.md` (improvements to be made) and `MANUAL_EDITS.md` (manual
-  edits made by the user) up to date as work proceeds.
-- Never put secrets, API keys, or sensitive data in code or committed files; always
-  put them in `.env` (root, git-ignored). Provide a template in `.env.example`.
+- Brainstorm features (in French) before building. Record design decisions in `docs/superpowers/specs/` and implementation plans in `docs/superpowers/plans/`; commit docs alongside code.
+- Keep `IMPROVEMENTS.md` (todo/improvements) and `MANUAL_EDITS.md` (manual changes the user made) up to date.
+- Secrets only in `.env` (gitignored); template in `.env.example`.
 
-## Project goal
+## Quick reference
 
-IaC + provisioning of cloud servers with Terraform (Hetzner Cloud) and Ansible,
-built step by step: tools, IaC, provisioning.
+### Terraform (`iac/`)
 
-Repo state: the initial commit's `iac/` and `specs/` were intentionally removed;
-work starts fresh, one step at a time (tools -> IaC -> provisioning).
+```bash
+cd iac                              # direnv loads .env + .venv/bin on PATH
+terraform init                      # one-time (or after provider changes)
+terraform fmt && terraform validate # before every plan
+terraform plan                      # dry-run — no apply without user confirmation
+terraform apply                     # creates/recreates server + firewall
+terraform output                    # get server_ipv4, server_ipv6, server_id
+terraform destroy                   # destroys everything
+```
 
-## Target architecture (planned)
+`user_data` in `hcloud_server` is `ForceNew` — any change recreates the server, so
+the full provisioning loop (inventory IP + both playbooks) must be re-run.
 
-A single Hetzner server (decided during brainstorming — the original 2-server
-gateway design was dropped):
+### Ansible (`provisioning/`)
 
-- One server: Hetzner **CPX32** (4 vCPU / 8 GB / 160 GB), location `fsn1`,
-  Ubuntu 24.04 LTS, public IPv4 + IPv6.
-- L4 protection = Hetzner managed firewall (`hcloud_firewall`, free, stateful,
-  implicit deny inbound). SSH on non-standard port `3254` allowed only from
-  `var.ssh_allowed_ips`; ports 80/443 open (to be restricted to Cloudflare IPs
-  at the last step). No nftables, no NAT, no private network (single server).
-- Runs Dockploy to manage per-project Docker Compose stacks; DBs are kept in the
-  app Compose files (migrate to a dedicated storage server later only if
-  constraining).
-- Tailscale on the server for admin access from the user's machine.
-- Cloudflare in front for L7 firewall with domain `ebag.click` — deliberately the
-  LAST step (requires config changes on Cloudflare side).
+```bash
+cd provisioning
+ansible-playbook playbooks/admin.yml --syntax-check
+ansible-playbook playbooks/dokploy.yml --syntax-check
+ansible-playbook playbooks/admin.yml   # hardening, sshd, Tailscale, swap, hostname
+ansible-playbook playbooks/dokploy.yml  # Docker CE + Dokploy PaaS
+```
 
-Because the managed firewall drops traffic before it reaches the OS, Docker
-ports published with `-p` are NOT reachable from the internet unless a firewall
-rule allows them.
+**Order matters**: `admin.yml` (OS hardening) must run before `dokploy.yml`
+(Docker + Dokploy). Ansible lives in `.venv/` (managed by `uv sync`),
+auto-loaded by direnv.
 
-### Bootstrap (destroy -> apply -> provision) is lockout-safe
+### After `terraform apply`
 
-The server's `user_data` (cloud-init) creates the sudo user `admin` (key-only)
-and moves sshd to port `3254` at first boot, disabling Ubuntu's `ssh.socket`
-and root/password login. So after a fresh `terraform apply`, SSH is already
-reachable as `admin` on 3254 — **port 22 is never opened and there is no root
-bootstrap**. Ansible runs directly as `admin`. Note: `user_data` is `ForceNew`
-— changing it recreates the server. The playbook removes the cloud-init sshd
-drop-in once it manages sshd itself.
+Update `provisioning/inventory/hosts.yml` with the new IP from
+`terraform output -raw server_ipv4`. The IP is hardcoded — no dynamic inventory.
 
-## Environment variables (root `.env`)
+## Key architecture
 
-- `HCLOUD_TOKEN` — Hetzner Cloud API token (consumed natively by the `hcloud`
-  provider).
-- `TF_VAR_ssh_key_name` — name of the SSH key registered in Hetzner Cloud.
-- `TF_VAR_ssh_allowed_ips` — JSON list of admin CIDRs allowed to SSH to the
-  firewall, e.g. `TF_VAR_ssh_allowed_ips='["1.2.3.4/32"]'` (single-quote so the
-  shell keeps the quotes).
-- `TF_VAR_admin_ssh_public_key` — public key of the `admin` user, injected by
-  cloud-init. Set with `TF_VAR_admin_ssh_public_key="$(cat ~/.ssh/id_rsa.pub)"`
-  (must be quoted: the key contains spaces).
-- `TS_AUTHKEY` — Tailscale auth key used by the server.
-
-`.env` is loaded automatically by direnv (`.envrc` at the repo root also puts
-`.venv/bin` on PATH, so `ansible*` and `terraform` just work after `cd`). If
-direnv is not available, load `.env` manually with
-`set -a && source .env && set +a`. `.tfvars` are git-ignored.
+- Single Hetzner CPX32, Ubuntu 24.04, fsn1, IPv4+IPv6. Full design: `docs/superpowers/specs/`.
+- Hetzner managed firewall (`hcloud_firewall`): stateful, implicit deny inbound. SSH on port 3254 (admin IPs only); HTTP/S restricted to Cloudflare IPs.
+- cloud-init `user_data` creates sudo user `admin` and moves sshd to port 3254 at first boot. **Port 22 is never opened.** Ansible runs as `admin` on 3254.
+- Ansible **must run with zero warnings**: `ansible_python_interpreter` pinned in group_vars, `remote_tmp` pre-created by cloud-init, stale collections removed.
+- **App deployment onto Dokploy** (once the server is up) is a Dokploy HTTP API flow, not Ansible — use the `deploy-dokploy-app` skill in `.agents/skills/` (GitLab repo → compose → env vars → deploy → Let's Encrypt domain).
 
 ## Layout
 
-- `iac/` — Terraform. Single server `cpx32`, Ubuntu 24.04 (`ubuntu-24.04`
-  image), SSH key via `data "hcloud_ssh_key"`, attached managed firewall
-  (`hcloud_firewall`), cloud-init `user_data` for the sshd bootstrap, no
-  private network.
-- `provisioning/` — Ansible. Inventory `inventory/hosts.yml`, group vars in
-  `inventory/group_vars/` (must sit next to the inventory), playbooks in
-  `playbooks/`. Admin playbook: apt, unattended-upgrades, sshd on 3254,
-  Tailscale, swap, hostname. The `admin` user is created by cloud-init (not by
-  Ansible).
-- `.envrc` — direnv: activates `.venv` and loads `.env` automatically.
-- `pyproject.toml` + `uv.lock` — project tooling (Ansible), venv via `uv sync`.
-- `specs/` and `docs/superpowers/` — feature specs and plans.
+- `iac/` — Terraform: providers, variables, server + firewall, outputs
+- `provisioning/` — Ansible: inventory, group vars, playbooks (`admin.yml`, `dokploy.yml`), roles
+- `docs/superpowers/specs/` and `docs/superpowers/plans/` — design docs and impl plans
+- `.envrc` — direnv: loads `.env` + puts `.venv/bin` on PATH
 
-## Terraform commands
+## Gotchas
 
-```bash
-cd iac           # direnv loads .env automatically
-terraform init
-terraform plan
-terraform apply
-terraform output   # get server IPs
-terraform destroy
-```
+- **Local Terraform state**: `terraform destroy` is impossible if `iac/.terraform/` is lost. Remote backend is a planned improvement.
+- **Inventory IP is hardcoded** in `provisioning/inventory/hosts.yml` — must be updated manually after `terraform apply`.
+- **`host_key_checking = False`** in `provisioning/ansible.cfg` (new server IP changes host key).
+- **Dokploy install**: the `dokploy` role uses `curl | sh`, not Ansible modules.

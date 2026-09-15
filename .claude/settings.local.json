@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__terraform__get_latest_provider_version",
+      "mcp__terraform__get_provider_capabilities",
+      "mcp__terraform__search_providers",
+      "mcp__terraform__get_provider_details",
+      "Bash(terraform version *)",
+      "Bash(sed 's/=.*/=<redacted>/' .env)",
+      "Bash(sed 's/=.*/=<redacted>/' iac/.env)",
+      "Bash(terraform fmt *)",
+      "Bash(terraform validate *)",
+      "Bash(terraform providers *)",
+      "Bash(ansible-playbook site.yml --syntax-check)",
+      "Bash(uv init *)",
+      "Bash(uv add *)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "terraform"
+  ]
+}
