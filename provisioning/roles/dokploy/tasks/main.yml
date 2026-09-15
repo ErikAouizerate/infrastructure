@@ -26,6 +26,13 @@
       ansible.builtin.debug:
         msg: "Dokploy is already installed and Swarm is active. Skipping."
       changed_when: false
+  rescue:
+    - name: Fail if the existing Dokploy install is unhealthy
+      ansible.builtin.fail:
+        msg: >-
+          Dokploy is installed ({{ dokploy_config_dir }} exists) but Docker
+          Swarm is not active. Investigate the existing installation before
+          continuing.
 
 - name: Ensure ports 80, 443, 3000 are free
   ansible.builtin.shell:

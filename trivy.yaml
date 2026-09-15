@@ -1,0 +1,18 @@
+# Trivy configuration loaded automatically by the security-check audit (`sec`).
+#
+# It mirrors the vendored/generated paths already skipped by the image's
+# Checkov config: these directories are not sources of truth for IaC or
+# dependency findings and only produce false positives (e.g. the third-party
+# lockfiles bundled inside the Ansible collections under .venv/).
+scan:
+  skip-dirs:
+    - .venv
+    - venv
+    - node_modules
+    - site-packages
+    - __pycache__
+    - .mypy_cache
+    - .pytest_cache
+    - .ruff_cache
+    - .tox
+    - .cache
